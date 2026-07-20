@@ -40,11 +40,25 @@ function parseAmountInEok(str: string | null | undefined): number {
 }
 
 function findAccount(items: DartApiResponse['list'], ...keywords: string[]): number {
-  // 정확히 일치하는 계정 우선, 없으면 부분 일치
   const exact = items.find(i => keywords.includes(i.account_nm.trim()));
   if (exact) return parseAmountInEok(exact.thstrm_amount);
   const partial = items.find(i => keywords.some(kw => i.account_nm.includes(kw)));
   return partial ? parseAmountInEok(partial.thstrm_amount) : 0;
+}
+
+// 음수 포함 계정 (기타영업손익 등)
+function findAccountSigned(items: DartApiResponse['list'], ...keywords: string[]): number {
+  const exact = items.find(i => keywords.includes(i.account_nm.trim()));
+  if (exact) {
+    const raw = parseInt((exact.thstrm_amount ?? '').replace(/,/g, ''), 10) || 0;
+    return Math.round(raw / 100_000_000);
+  }
+  const partial = items.find(i => keywords.some(kw => i.account_nm.includes(kw)));
+  if (partial) {
+    const raw = parseInt((partial.thstrm_amount ?? '').replace(/,/g, ''), 10) || 0;
+    return Math.round(raw / 100_000_000);
+  }
+  return 0;
 }
 
 async function fetchAllAccounts(
@@ -76,41 +90,52 @@ async function fetchYearMetrics(corpCode: string, year: number): Promise<Financi
     const is = items.filter(i => i.sj_div === 'IS' || i.sj_div === 'CIS');
 
     // 재무상태표 (BS)
-    const totalAssets    = findAccount(bs, '자산총계');
-    const totalEquity    = findAccount(bs, '자본총계');
-    const totalDeposits  = findAccount(bs, '예수부채', '예수금');
+    const totalAssets = findAccount(bs, '자산총계');
+    const totalEquity = findAccount(bs, '자본총계');
     // IFRS 9 도입(2023) 전후 계정명 차이 대응
-    const totalLoans     = findAccount(bs,
-      '상각후원가측정대출채권',   // 2023년 이후 IFRS 9
-      '대출채권및수취채권',        // 2022년 이전
+    const totalLoans  = findAccount(bs,
+      '상각후원가측정대출채권',
+      '대출채권및수취채권',
       '대출채권',
       '원화대출금',
     );
-    const allowanceForLosses = findAccount(bs,
-      '신용손실충당금',
-      '대손충당금',
-      '대출채권손실충당금',
-    );
 
-    // 손익계산서 (IS)
+    // 포괄손익계산서 (CIS) — 은행은 IS 대신 CIS 사용
     const interestIncome  = findAccount(is, '이자수익');
     const interestExpense = findAccount(is, '이자비용');
     const netIncome       = findAccount(is, '당기순이익(손실)', '당기순이익');
 
-    if (totalAssets === 0) return null; // 파싱 실패
+    // 비이자이익 = 순수수료이익 + 유가증권손익 + 기타영업손익
+    const feeIncome         = findAccount(is, '순수수료이익');
+    const tradingGain       = findAccount(is, '당기손익-공정가치측정 금융상품 순손익');
+    const otherOpIncome     = findAccountSigned(is, '기타영업손익');
+    const nonInterestIncome = feeIncome + tradingGain + otherOpIncome;
 
-    const nim = ((interestIncome - interestExpense) / totalAssets) * 100;
-    const roa = (netIncome / totalAssets) * 100;
-    const roe = totalEquity > 0 ? (netIncome / totalEquity) * 100 : 0;
-    const ldr = totalDeposits > 0 ? (totalLoans / totalDeposits) * 100 : 0;
-    const allowanceCoverage = totalLoans > 0 ? (allowanceForLosses / totalLoans) * 100 : 0;
+    // 순영업수익 = 순이자이익 + 비이자이익 (계정명 의존 없이 직접 계산)
+    const netInterestIncome   = interestIncome - interestExpense;
+    const netOperatingRevenue = netInterestIncome + nonInterestIncome;
+
+    // 대손비용 (신용손실충당금 전입액) — 공백 포함/제외 양쪽 대응
+    const creditCost = findAccount(is,
+      '신용손실충당금 전입액',
+      '신용손실충당금전입액',
+      '대손충당금전입액',
+      '대손충당금 전입액',
+    );
+
+    if (totalAssets === 0) return null;
+
+    const nim            = ((interestIncome - interestExpense) / totalAssets) * 100;
+    const roe            = totalEquity > 0 ? (netIncome / totalEquity) * 100 : 0;
+    const creditCostRatio = totalLoans > 0 ? (creditCost / totalLoans) * 100 : 0;
 
     return {
       year,
-      totalAssets, totalLoans, totalDeposits, totalEquity,
-      interestIncome, interestExpense, netIncome, allowanceForLosses,
-      bisRatio: 0, nplRatio: 0, // 별도 감독 공시 → 목업으로 보완
-      nim, roa, roe, ldr, allowanceCoverage,
+      totalAssets, totalLoans, totalEquity,
+      interestIncome, interestExpense, netIncome,
+      netOperatingRevenue, nonInterestIncome, creditCost,
+      cet1Ratio: 0, // 감독당국 공시 → 목업으로 보완
+      nim, roe, creditCostRatio,
     };
   } catch {
     return null;
@@ -122,7 +147,7 @@ export async function fetchBankMetrics(
   corpCode: string,
   years: number[]
 ): Promise<{ metrics: FinancialMetrics[]; source: 'DART' | 'MOCK' }> {
-  const cacheKey = `${bankId}_v3_${years.join('_')}`;
+  const cacheKey = `${bankId}_v5_${years.join('_')}`;
   const cached = getCached(cacheKey);
   if (cached) return { metrics: cached, source: 'DART' };
 
@@ -147,14 +172,10 @@ export async function fetchBankMetrics(
       const mock = mockFallback.find(m => m.year === year);
 
       if (dart && mock) {
-        // DART 실데이터 + 감독당국 공시 지표(BIS, NPL) 보완
+        // DART 실데이터 + 감독당국 공시 지표(CET1) 보완
         return {
           ...dart,
-          bisRatio: mock.bisRatio,
-          nplRatio: mock.nplRatio,
-          allowanceCoverage: dart.allowanceCoverage > 5
-            ? dart.allowanceCoverage
-            : mock.allowanceCoverage,
+          cet1Ratio: mock.cet1Ratio,
         };
       }
       // 해당 연도 DART 데이터 없음 → 목업(사업보고서 기반 추정치) 사용

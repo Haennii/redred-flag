@@ -12,21 +12,19 @@ export interface Bank {
 
 export interface FinancialMetrics {
   year: number;
-  totalAssets: number;        // 자산총계 (억원)
-  totalLoans: number;         // 대출채권 (억원)
-  totalDeposits: number;      // 예수부채 (억원)
-  totalEquity: number;        // 자본총계 (억원)
-  interestIncome: number;     // 이자수익 (억원)
-  interestExpense: number;    // 이자비용 (억원)
-  netIncome: number;          // 당기순이익 (억원)
-  allowanceForLosses: number; // 대손충당금 (억원)
-  bisRatio: number;           // BIS 자기자본비율 (%)
-  nplRatio: number;           // 고정이하여신비율 (%)
-  nim: number;                // 순이자마진 (%)
-  roa: number;                // ROA (%)
-  roe: number;                // ROE (%)
-  ldr: number;                // 예대율 (%)
-  allowanceCoverage: number;  // 대손충당금 적립률 (%)
+  totalAssets: number;            // 자산총계 (억원)
+  totalLoans: number;             // 대출채권 (억원)
+  totalEquity: number;            // 자본총계 (억원)
+  netIncome: number;              // 당기순이익 (억원)
+  interestIncome: number;         // 이자수익 (억원) — NIM 계산용
+  interestExpense: number;        // 이자비용 (억원) — NIM 계산용
+  netOperatingRevenue: number;    // 순영업수익 (억원)
+  nonInterestIncome: number;      // 비이자이익 (억원)
+  creditCost: number;             // 대손비용 (억원)
+  roe: number;                    // 자기자본이익률 (%)
+  nim: number;                    // 순이자마진 (%)
+  cet1Ratio: number;              // 보통주자본비율 (%)
+  creditCostRatio: number;        // 대손비용률 (%)
 }
 
 export interface RedFlag {

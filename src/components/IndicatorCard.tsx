@@ -48,7 +48,7 @@ export default function IndicatorCard({
         </div>
         <span
           className="text-sm font-semibold"
-          style={{ color: trend === 'UP' ? '#10B981' : trend === 'DOWN' ? '#EF4444' : '#6B7280' }}
+          style={{ color: trend === 'UP' ? '#EF4444' : trend === 'DOWN' ? '#10B981' : '#6B7280' }}
         >
           {TREND_ICONS[trend]}
         </span>

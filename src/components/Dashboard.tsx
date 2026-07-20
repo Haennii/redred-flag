@@ -18,7 +18,6 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
   const selected = analyses.find(a => a.bank.id === selectedBankId);
   const isOverview = selectedBankId === 'overview';
 
-  // 추세 차트용 데이터 변환
   function toTrendData(key: keyof import('../types').FinancialMetrics) {
     return analyses[0]?.metrics.map((_, i) => {
       const point: any = { year: analyses[0].metrics[i].year };
@@ -29,7 +28,6 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
     }) ?? [];
   }
 
-  // 은행별 비교 데이터
   function toComparisonData(
     key: keyof import('../types').FinancialMetrics,
     higherIsWorse: boolean,
@@ -103,7 +101,6 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
       {/* 전체 비교 뷰 */}
       {isOverview && (
         <div className="space-y-6">
-          {/* 은행별 종합 위험도 */}
           <div>
             <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
               종합 감사위험 점수
@@ -131,35 +128,35 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
             </div>
           </div>
 
-          {/* 비교 차트 그리드 */}
+          {/* 비교 차트 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ComparisonBarChart
-              title="BIS 자기자본비율 비교 (2024)"
-              data={toComparisonData('bisRatio', false, THRESHOLDS.bisRatio)}
+              title="보통주자본비율(CET1) 비교 (2024)"
+              data={toComparisonData('cet1Ratio', false, THRESHOLDS.cet1Ratio)}
               unit="%"
-              referenceValue={THRESHOLDS.bisRatio.danger}
+              referenceValue={THRESHOLDS.cet1Ratio.danger}
               referenceLabel="최소요건"
             />
             <ComparisonBarChart
-              title="고정이하여신비율(NPL) 비교 (2024)"
-              data={toComparisonData('nplRatio', true, THRESHOLDS.nplRatio)}
+              title="대손비용률 비교 (2024)"
+              data={toComparisonData('creditCostRatio', true, THRESHOLDS.creditCostRatio)}
               unit="%"
-              referenceValue={THRESHOLDS.nplRatio.warning}
+              referenceValue={THRESHOLDS.creditCostRatio.warning}
               referenceLabel="경계"
             />
             <ComparisonBarChart
-              title="ROA 비교 (2024)"
-              data={toComparisonData('roa', false, THRESHOLDS.roa)}
+              title="ROE 비교 (2024)"
+              data={toComparisonData('roe', false, THRESHOLDS.roe)}
               unit="%"
-              referenceValue={THRESHOLDS.roa.warning}
+              referenceValue={THRESHOLDS.roe.watch}
               referenceLabel="경계"
             />
             <ComparisonBarChart
-              title="예대율 비교 (2024)"
-              data={toComparisonData('ldr', true, THRESHOLDS.ldr)}
+              title="NIM 비교 (2024)"
+              data={toComparisonData('nim', false, THRESHOLDS.nim)}
               unit="%"
-              referenceValue={THRESHOLDS.ldr.danger}
-              referenceLabel="규제한도"
+              referenceValue={THRESHOLDS.nim.watch}
+              referenceLabel="경계"
             />
           </div>
 
@@ -174,11 +171,11 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
               referenceLabel="경계"
             />
             <TrendLineChart
-              title="NPL 비율 추이"
-              data={toTrendData('nplRatio')}
+              title="대손비용률 추이"
+              data={toTrendData('creditCostRatio')}
               series={trendSeries}
               unit="%"
-              referenceValue={THRESHOLDS.nplRatio.warning}
+              referenceValue={THRESHOLDS.creditCostRatio.warning}
               referenceLabel="경계"
             />
           </div>
@@ -188,9 +185,8 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
       {/* 개별 은행 상세 뷰 */}
       {!isOverview && selected && (
         <div className="space-y-6">
-          {/* 상단: 위험도 + 핵심지표 */}
+          {/* 상단: 위험도 + KPI 카드 */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-            {/* 위험 점수 */}
             <div className="bg-[#1A2235] rounded-xl p-6 border border-gray-800 flex flex-col items-center justify-center">
               <div className="text-xs text-gray-500 mb-3 font-medium">종합 감사위험도</div>
               <RiskScoreMeter score={selected.riskScore} riskLevel={selected.riskLevel} />
@@ -203,7 +199,7 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
               </div>
             </div>
 
-            {/* KPI 카드 4개 */}
+            {/* 상단 4개 지표 */}
             <div className="lg:col-span-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
               {selected.redFlags.slice(0, 4).map(flag => (
                 <IndicatorCard
@@ -219,8 +215,8 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
             </div>
           </div>
 
-          {/* 나머지 지표 카드 */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* 하단 3개 지표 */}
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {selected.redFlags.slice(4).map(flag => (
               <IndicatorCard
                 key={flag.id}
@@ -240,46 +236,52 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
           {/* 추세 차트 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <TrendLineChart
-              title="BIS 자기자본비율 추이"
-              data={selected.metrics.map(m => ({ year: m.year, [selected.bank.id]: m.bisRatio }))}
-              series={[{ key: selected.bank.id, name: selected.bank.shortName, color: selected.bank.color }]}
+              title="ROE 추이"
+              data={selected.metrics.map(m => ({ year: m.year, [selected.bank.id]: m.roe }))}
+              series={[{ key: selected.bank.id, name: 'ROE(%)', color: selected.bank.color }]}
               unit="%"
-              referenceValue={THRESHOLDS.bisRatio.danger}
-              referenceLabel="최소요건 10.5%"
+              referenceValue={THRESHOLDS.roe.watch}
+              referenceLabel={`경계 ${THRESHOLDS.roe.watch}%`}
             />
             <TrendLineChart
-              title="NPL 비율 추이"
-              data={selected.metrics.map(m => ({ year: m.year, [selected.bank.id]: m.nplRatio }))}
-              series={[{ key: selected.bank.id, name: selected.bank.shortName, color: selected.bank.color }]}
+              title="NIM 추이"
+              data={selected.metrics.map(m => ({ year: m.year, [selected.bank.id]: m.nim }))}
+              series={[{ key: selected.bank.id, name: 'NIM(%)', color: selected.bank.color }]}
               unit="%"
-              referenceValue={THRESHOLDS.nplRatio.warning}
-              referenceLabel="경계 0.8%"
+              referenceValue={THRESHOLDS.nim.warning}
+              referenceLabel={`경계 ${THRESHOLDS.nim.warning}%`}
             />
             <TrendLineChart
-              title="ROA / ROE 추이"
-              data={selected.metrics.map(m => ({ year: m.year, roa: m.roa, roe: m.roe / 10 }))}
-              series={[
-                { key: 'roa', name: 'ROA', color: selected.bank.color },
-                { key: 'roe', name: 'ROE/10', color: '#6B7280' },
-              ]}
-              unit="%"
-            />
-            <TrendLineChart
-              title="NIM / 예대율 추이"
+              title="순영업수익 / 비이자이익 추이"
               data={selected.metrics.map(m => ({
                 year: m.year,
-                nim: m.nim,
-                ldr: m.ldr / 50, // 스케일 조정
+                nor: m.netOperatingRevenue / 10000,   // 조원 단위
+                nii: m.nonInterestIncome / 1000,       // 천억원 단위 (가시성)
               }))}
               series={[
-                { key: 'nim', name: 'NIM(%)', color: selected.bank.color },
-                { key: 'ldr', name: '예대율(/50)', color: '#F59E0B' },
+                { key: 'nor', name: '순영업수익(조원)', color: selected.bank.color },
+                { key: 'nii', name: '비이자이익(천억)', color: '#6B7280' },
               ]}
-              unit="%"
+              unit=""
+            />
+            <TrendLineChart
+              title="대손비용 / 대손비용률 추이"
+              data={selected.metrics.map(m => ({
+                year: m.year,
+                ccr: m.creditCostRatio,
+                cc:  m.creditCost / 10000,  // 조원 단위
+              }))}
+              series={[
+                { key: 'ccr', name: '대손비용률(%)', color: selected.bank.color },
+                { key: 'cc',  name: '대손비용(조원)', color: '#EF4444' },
+              ]}
+              unit=""
+              referenceValue={THRESHOLDS.creditCostRatio.warning}
+              referenceLabel={`경계 ${THRESHOLDS.creditCostRatio.warning}%`}
             />
           </div>
 
-          {/* 재무 요약 테이블 */}
+          {/* 연도별 재무지표 테이블 */}
           <div className="bg-[#1A2235] rounded-xl border border-gray-800 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-800">
               <h3 className="text-sm font-semibold text-gray-300">연도별 핵심 재무지표</h3>
@@ -298,15 +300,15 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
                 </thead>
                 <tbody className="divide-y divide-gray-800/50">
                   {[
-                    { label: '총자산 (조원)', key: 'totalAssets', divisor: 10000, decimals: 1 },
-                    { label: '당기순이익 (억원)', key: 'netIncome', divisor: 1, decimals: 0 },
-                    { label: 'BIS 자기자본비율', key: 'bisRatio', divisor: 1, decimals: 1, suffix: '%' },
-                    { label: 'NPL 비율', key: 'nplRatio', divisor: 1, decimals: 2, suffix: '%' },
-                    { label: 'NIM', key: 'nim', divisor: 1, decimals: 2, suffix: '%' },
-                    { label: 'ROA', key: 'roa', divisor: 1, decimals: 2, suffix: '%' },
-                    { label: 'ROE', key: 'roe', divisor: 1, decimals: 1, suffix: '%' },
-                    { label: '예대율', key: 'ldr', divisor: 1, decimals: 1, suffix: '%' },
-                    { label: '대손충당금적립률', key: 'allowanceCoverage', divisor: 1, decimals: 1, suffix: '%' },
+                    { label: '총자산 (조원)',       key: 'totalAssets',         divisor: 10000, decimals: 1 },
+                    { label: '당기순이익 (억원)',   key: 'netIncome',            divisor: 1,     decimals: 0 },
+                    { label: 'ROE',                key: 'roe',                  divisor: 1,     decimals: 1, suffix: '%' },
+                    { label: 'NIM',                key: 'nim',                  divisor: 1,     decimals: 2, suffix: '%' },
+                    { label: '보통주자본비율(CET1)', key: 'cet1Ratio',           divisor: 1,     decimals: 1, suffix: '%' },
+                    { label: '순영업수익 (억원)',   key: 'netOperatingRevenue',  divisor: 1,     decimals: 0 },
+                    { label: '비이자이익 (억원)',   key: 'nonInterestIncome',    divisor: 1,     decimals: 0 },
+                    { label: '대손비용 (억원)',     key: 'creditCost',           divisor: 1,     decimals: 0 },
+                    { label: '대손비용률',          key: 'creditCostRatio',      divisor: 1,     decimals: 2, suffix: '%' },
                   ].map(row => (
                     <tr key={row.label} className="hover:bg-white/[0.02]">
                       <td className="px-5 py-3 text-gray-400 font-medium text-xs">{row.label}</td>
