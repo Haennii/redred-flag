@@ -27,15 +27,26 @@ export interface FinancialMetrics {
   creditCostRatio: number;        // 대손비용률 (%)
 }
 
+export interface PeerAverages {
+  roe: number;
+  nim: number;
+  norGrowth: number;
+  niiGrowth: number;
+  creditCostGrowth: number;
+  creditCostRatio: number;
+}
+
 export interface RedFlag {
   id: string;
   name: string;
   nameEn: string;
   description: string;
-  auditNote: string;          // 감사관점 코멘트
+  auditNote: string;
   currentValue: number;
+  peerAverage?: number;       // 동종 4행 평균값 (표시용)
   threshold: number;
   unit: string;
+  basis: string;              // 기준 출처
   severity: RiskLevel;
   scoreContribution: number;
   triggered: boolean;

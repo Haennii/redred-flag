@@ -1,6 +1,6 @@
 import { BankAnalysis } from '../types';
 import { BANKS } from '../constants/banks';
-import { THRESHOLDS } from '../constants/thresholds';
+import { CET1_THRESHOLDS, PEER_DEV } from '../constants/thresholds';
 import { RISK_LABELS } from '../utils/riskFlags';
 import RiskScoreMeter from './RiskScoreMeter';
 import IndicatorCard from './IndicatorCard';
@@ -18,6 +18,43 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
   const selected = analyses.find(a => a.bank.id === selectedBankId);
   const isOverview = selectedBankId === 'overview';
 
+  // 동종 4행 평균 — 비교 차트 기준선용
+  const avg = (key: keyof import('../types').FinancialMetrics) =>
+    analyses.reduce((s, a) => s + (a.latestMetrics[key] as number), 0) / (analyses.length || 1);
+
+  const peerRoe           = avg('roe');
+  const peerNim           = avg('nim');
+  const peerCreditCostRat = avg('creditCostRatio');
+
+  // CET1: 공식 기준 절대값 비교
+  function toCet1ComparisonData() {
+    return analyses.map(a => {
+      const value = a.latestMetrics.cet1Ratio;
+      const t = CET1_THRESHOLDS;
+      let severity: import('../types').RiskLevel = 'SAFE';
+      if (value <= t.danger)       severity = 'DANGER';
+      else if (value <= t.warning) severity = 'WARNING';
+      else if (value <= t.watch)   severity = 'WATCH';
+      return { name: a.bank.shortName, value, color: a.bank.color, severity };
+    });
+  }
+
+  // 동종 평균 대비 편차 기반 비교 (이미 계산된 flag severity 재활용)
+  function toFlagComparisonData(
+    flagId: string,
+    valueKey: keyof import('../types').FinancialMetrics
+  ) {
+    return analyses.map(a => {
+      const flag = a.redFlags.find(f => f.id === flagId);
+      return {
+        name: a.bank.shortName,
+        value: a.latestMetrics[valueKey] as number,
+        color: a.bank.color,
+        severity: flag?.severity ?? 'SAFE',
+      };
+    });
+  }
+
   function toTrendData(key: keyof import('../types').FinancialMetrics) {
     return analyses[0]?.metrics.map((_, i) => {
       const point: any = { year: analyses[0].metrics[i].year };
@@ -28,32 +65,16 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
     }) ?? [];
   }
 
-  function toComparisonData(
-    key: keyof import('../types').FinancialMetrics,
-    higherIsWorse: boolean,
-    thresholds: { danger: number; warning: number; watch: number }
-  ) {
-    return analyses.map(a => {
-      const value = a.latestMetrics[key] as number;
-      let severity: import('../types').RiskLevel = 'SAFE';
-      if (higherIsWorse) {
-        if (value >= thresholds.danger) severity = 'DANGER';
-        else if (value >= thresholds.warning) severity = 'WARNING';
-        else if (value >= thresholds.watch) severity = 'WATCH';
-      } else {
-        if (value <= thresholds.danger) severity = 'DANGER';
-        else if (value <= thresholds.warning) severity = 'WARNING';
-        else if (value <= thresholds.watch) severity = 'WATCH';
-      }
-      return { name: a.bank.shortName, value, color: a.bank.color, severity };
-    });
-  }
-
   const trendSeries = analyses.map(a => ({
     key: a.bank.id,
     name: a.bank.shortName,
     color: a.bank.color,
   }));
+
+  // ISA 520 peer-deviation watch 기준선 계산
+  const roePeerWatch           = peerRoe           * (1 + PEER_DEV.below.watch / 100);
+  const nimPeerWatch           = peerNim           * (1 + PEER_DEV.below.watch / 100);
+  const creditCostRatPeerWatch = peerCreditCostRat * (1 + PEER_DEV.above.watch / 100);
 
   return (
     <div className="max-w-screen-2xl mx-auto px-6 py-6">
@@ -132,31 +153,31 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ComparisonBarChart
               title="보통주자본비율(CET1) 비교 (2024)"
-              data={toComparisonData('cet1Ratio', false, THRESHOLDS.cet1Ratio)}
+              data={toCet1ComparisonData()}
               unit="%"
-              referenceValue={THRESHOLDS.cet1Ratio.danger}
-              referenceLabel="최소요건"
+              referenceValue={CET1_THRESHOLDS.danger}
+              referenceLabel={`D-SIB 최저선 ${CET1_THRESHOLDS.danger}%`}
             />
             <ComparisonBarChart
               title="대손비용률 비교 (2024)"
-              data={toComparisonData('creditCostRatio', true, THRESHOLDS.creditCostRatio)}
+              data={toFlagComparisonData('credit_cost_ratio', 'creditCostRatio')}
               unit="%"
-              referenceValue={THRESHOLDS.creditCostRatio.warning}
-              referenceLabel="경계"
+              referenceValue={peerCreditCostRat}
+              referenceLabel={`4행 평균 ${peerCreditCostRat.toFixed(2)}%`}
             />
             <ComparisonBarChart
               title="ROE 비교 (2024)"
-              data={toComparisonData('roe', false, THRESHOLDS.roe)}
+              data={toFlagComparisonData('roe', 'roe')}
               unit="%"
-              referenceValue={THRESHOLDS.roe.watch}
-              referenceLabel="경계"
+              referenceValue={peerRoe}
+              referenceLabel={`4행 평균 ${peerRoe.toFixed(1)}%`}
             />
             <ComparisonBarChart
               title="NIM 비교 (2024)"
-              data={toComparisonData('nim', false, THRESHOLDS.nim)}
+              data={toFlagComparisonData('nim', 'nim')}
               unit="%"
-              referenceValue={THRESHOLDS.nim.watch}
-              referenceLabel="경계"
+              referenceValue={peerNim}
+              referenceLabel={`4행 평균 ${peerNim.toFixed(2)}%`}
             />
           </div>
 
@@ -167,16 +188,16 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
               data={toTrendData('nim')}
               series={trendSeries}
               unit="%"
-              referenceValue={THRESHOLDS.nim.warning}
-              referenceLabel="경계"
+              referenceValue={nimPeerWatch}
+              referenceLabel={`4행 평균 -10% 경계 ${nimPeerWatch.toFixed(2)}%`}
             />
             <TrendLineChart
               title="대손비용률 추이"
               data={toTrendData('creditCostRatio')}
               series={trendSeries}
               unit="%"
-              referenceValue={THRESHOLDS.creditCostRatio.warning}
-              referenceLabel="경계"
+              referenceValue={creditCostRatPeerWatch}
+              referenceLabel={`4행 평균 +20% 경계 ${creditCostRatPeerWatch.toFixed(2)}%`}
             />
           </div>
         </div>
@@ -207,9 +228,10 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
                   label={flag.name}
                   value={flag.currentValue}
                   unit={flag.unit}
-                  threshold={flag.threshold}
                   severity={flag.severity}
                   trend={flag.trend}
+                  description={flag.description}
+                  basis={flag.basis}
                 />
               ))}
             </div>
@@ -223,9 +245,10 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
                 label={flag.name}
                 value={flag.currentValue}
                 unit={flag.unit}
-                threshold={flag.threshold}
                 severity={flag.severity}
                 trend={flag.trend}
+                description={flag.description}
+                basis={flag.basis}
               />
             ))}
           </div>
@@ -240,23 +263,23 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
               data={selected.metrics.map(m => ({ year: m.year, [selected.bank.id]: m.roe }))}
               series={[{ key: selected.bank.id, name: 'ROE(%)', color: selected.bank.color }]}
               unit="%"
-              referenceValue={THRESHOLDS.roe.watch}
-              referenceLabel={`경계 ${THRESHOLDS.roe.watch}%`}
+              referenceValue={roePeerWatch}
+              referenceLabel={`4행 평균 -10% 경계 ${roePeerWatch.toFixed(1)}%`}
             />
             <TrendLineChart
               title="NIM 추이"
               data={selected.metrics.map(m => ({ year: m.year, [selected.bank.id]: m.nim }))}
               series={[{ key: selected.bank.id, name: 'NIM(%)', color: selected.bank.color }]}
               unit="%"
-              referenceValue={THRESHOLDS.nim.warning}
-              referenceLabel={`경계 ${THRESHOLDS.nim.warning}%`}
+              referenceValue={nimPeerWatch}
+              referenceLabel={`4행 평균 -10% 경계 ${nimPeerWatch.toFixed(2)}%`}
             />
             <TrendLineChart
               title="순영업수익 / 비이자이익 추이"
               data={selected.metrics.map(m => ({
                 year: m.year,
-                nor: m.netOperatingRevenue / 10000,   // 조원 단위
-                nii: m.nonInterestIncome / 1000,       // 천억원 단위 (가시성)
+                nor: m.netOperatingRevenue / 10000,
+                nii: m.nonInterestIncome / 1000,
               }))}
               series={[
                 { key: 'nor', name: '순영업수익(조원)', color: selected.bank.color },
@@ -269,15 +292,15 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
               data={selected.metrics.map(m => ({
                 year: m.year,
                 ccr: m.creditCostRatio,
-                cc:  m.creditCost / 10000,  // 조원 단위
+                cc:  m.creditCost / 10000,
               }))}
               series={[
                 { key: 'ccr', name: '대손비용률(%)', color: selected.bank.color },
                 { key: 'cc',  name: '대손비용(조원)', color: '#EF4444' },
               ]}
               unit=""
-              referenceValue={THRESHOLDS.creditCostRatio.warning}
-              referenceLabel={`경계 ${THRESHOLDS.creditCostRatio.warning}%`}
+              referenceValue={creditCostRatPeerWatch}
+              referenceLabel={`4행 평균 +20% 경계 ${creditCostRatPeerWatch.toFixed(2)}%`}
             />
           </div>
 
