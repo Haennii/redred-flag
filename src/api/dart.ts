@@ -107,9 +107,18 @@ async function fetchYearMetrics(corpCode: string, year: number): Promise<Financi
 
     // 비이자이익 = 순수수료이익 + 유가증권손익 + 기타영업손익
     // 신한은 '순수수료손익', 나머지 3행은 '순수수료이익'
-    const feeIncome         = findAccount(is, '순수수료이익', '순수수료손익');
-    const tradingGain       = findAccount(is, '당기손익-공정가치측정 금융상품 순손익');
-    const otherOpIncome     = findAccountSigned(is, '기타영업손익');
+    const feeIncome   = findAccount(is, '순수수료이익', '순수수료손익');
+    // 트레이딩손익: KB '금융상품 순손익', 신한·우리 '금융상품관련손익', 하나 '순당기손익-공정가치측정금융상품이익'
+    const tradingGain = findAccount(is,
+      '당기손익-공정가치측정 금융상품 순손익',
+      '당기손익-공정가치측정금융상품관련손익',
+      '순당기손익-공정가치측정금융상품이익',
+    );
+    // 기타영업손익: 하나는 단일 계정 없이 수익/비용 분리 → 차감 계산
+    const otherOpNet  = findAccountSigned(is, '기타영업손익');
+    const otherOpIncome = otherOpNet !== 0
+      ? otherOpNet
+      : findAccount(is, '기타영업수익') - findAccount(is, '기타영업비용');
     const nonInterestIncome = feeIncome + tradingGain + otherOpIncome;
 
     // 순영업수익 = 순이자이익 + 비이자이익 (계정명 의존 없이 직접 계산)
@@ -150,7 +159,7 @@ export async function fetchBankMetrics(
   corpCode: string,
   years: number[]
 ): Promise<{ metrics: FinancialMetrics[]; source: 'DART' | 'MOCK' }> {
-  const cacheKey = `${bankId}_v6_${years.join('_')}`;
+  const cacheKey = `${bankId}_v7_${years.join('_')}`;
   const cached = getCached(cacheKey);
   if (cached) return { metrics: cached, source: 'DART' };
 
