@@ -106,7 +106,8 @@ async function fetchYearMetrics(corpCode: string, year: number): Promise<Financi
     const netIncome       = findAccount(is, '당기순이익(손실)', '당기순이익');
 
     // 비이자이익 = 순수수료이익 + 유가증권손익 + 기타영업손익
-    const feeIncome         = findAccount(is, '순수수료이익');
+    // 신한은 '순수수료손익', 나머지 3행은 '순수수료이익'
+    const feeIncome         = findAccount(is, '순수수료이익', '순수수료손익');
     const tradingGain       = findAccount(is, '당기손익-공정가치측정 금융상품 순손익');
     const otherOpIncome     = findAccountSigned(is, '기타영업손익');
     const nonInterestIncome = feeIncome + tradingGain + otherOpIncome;
@@ -115,10 +116,12 @@ async function fetchYearMetrics(corpCode: string, year: number): Promise<Financi
     const netInterestIncome   = interestIncome - interestExpense;
     const netOperatingRevenue = netInterestIncome + nonInterestIncome;
 
-    // 대손비용 (신용손실충당금 전입액) — 공백 포함/제외 양쪽 대응
+    // 대손비용 — 은행별 계정명 차이 전체 대응
+    // KB: '신용손실충당금 전입액', 하나/우리: '신용손실충당금전입액', 신한: '신용손실충당금전입'(액 없음)
     const creditCost = findAccount(is,
       '신용손실충당금 전입액',
       '신용손실충당금전입액',
+      '신용손실충당금전입',
       '대손충당금전입액',
       '대손충당금 전입액',
     );
@@ -147,7 +150,7 @@ export async function fetchBankMetrics(
   corpCode: string,
   years: number[]
 ): Promise<{ metrics: FinancialMetrics[]; source: 'DART' | 'MOCK' }> {
-  const cacheKey = `${bankId}_v5_${years.join('_')}`;
+  const cacheKey = `${bankId}_v6_${years.join('_')}`;
   const cached = getCached(cacheKey);
   if (cached) return { metrics: cached, source: 'DART' };
 
