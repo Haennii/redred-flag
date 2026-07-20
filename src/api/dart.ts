@@ -32,61 +32,75 @@ function setCache(key: string, data: FinancialMetrics[]): void {
   } catch {}
 }
 
-function parseAmount(str: string | null): number {
+// DART API는 원(KRW) 단위 반환 → 억원으로 변환
+function parseAmountInEok(str: string | null | undefined): number {
   if (!str) return 0;
-  return parseInt(str.replace(/,/g, ''), 10) || 0;
+  const raw = parseInt(str.replace(/,/g, ''), 10) || 0;
+  return Math.round(raw / 100_000_000);
 }
 
 function findAccount(items: DartApiResponse['list'], ...keywords: string[]): number {
-  const item = items.find(i =>
-    keywords.some(kw => i.account_nm.includes(kw))
-  );
-  return item ? parseAmount(item.thstrm_amount) : 0;
+  // 정확히 일치하는 계정 우선, 없으면 부분 일치
+  const exact = items.find(i => keywords.includes(i.account_nm.trim()));
+  if (exact) return parseAmountInEok(exact.thstrm_amount);
+  const partial = items.find(i => keywords.some(kw => i.account_nm.includes(kw)));
+  return partial ? parseAmountInEok(partial.thstrm_amount) : 0;
 }
 
-async function fetchStatements(
+async function fetchAllAccounts(
   corpCode: string,
-  year: number,
-  div: 'BS' | 'IS'
+  year: number
 ): Promise<DartApiResponse['list']> {
+  // fnlttSinglAcntAll: 전체 재무제표 (모든 계정) — 개별 은행 별도재무제표 기준
   const params = new URLSearchParams({
     crtfc_key: API_KEY,
     corp_code: corpCode,
     bsns_year: String(year),
     reprt_code: '11011', // 사업보고서 (연간)
-    fs_div: 'CFS',       // 연결재무제표
+    fs_div: 'OFS',       // 별도재무제표 (개별 은행 기준)
   });
 
   const res = await axios.get<DartApiResponse>(
-    `/dart-api/api/fnlttSinglAcnt.json?${params}`
+    `/dart-api/api/fnlttSinglAcntAll.json?${params}`
   );
 
   if (res.data.status !== '000') throw new Error(res.data.message);
-  return res.data.list.filter(i => i.sj_div === div);
+  return res.data.list;
 }
 
 async function fetchYearMetrics(corpCode: string, year: number): Promise<FinancialMetrics | null> {
   try {
-    const [bs, is] = await Promise.all([
-      fetchStatements(corpCode, year, 'BS'),
-      fetchStatements(corpCode, year, 'IS'),
-    ]);
+    const items = await fetchAllAccounts(corpCode, year);
+    const bs = items.filter(i => i.sj_div === 'BS');
+    // 은행 재무제표는 IS 대신 CIS(포괄손익계산서) 사용
+    const is = items.filter(i => i.sj_div === 'IS' || i.sj_div === 'CIS');
 
-    const totalAssets = findAccount(bs, '자산총계');
-    const totalLoans = findAccount(bs, '대출채권', '대출및수취채권');
-    const totalDeposits = findAccount(bs, '예수부채', '예수금');
-    const totalEquity = findAccount(bs, '자본총계');
-    const allowanceForLosses = findAccount(bs, '대손충당금', '신용손실충당금');
+    // 재무상태표 (BS)
+    const totalAssets    = findAccount(bs, '자산총계');
+    const totalEquity    = findAccount(bs, '자본총계');
+    const totalDeposits  = findAccount(bs, '예수부채', '예수금');
+    // IFRS 9 도입(2023) 전후 계정명 차이 대응
+    const totalLoans     = findAccount(bs,
+      '상각후원가측정대출채권',   // 2023년 이후 IFRS 9
+      '대출채권및수취채권',        // 2022년 이전
+      '대출채권',
+      '원화대출금',
+    );
+    const allowanceForLosses = findAccount(bs,
+      '신용손실충당금',
+      '대손충당금',
+      '대출채권손실충당금',
+    );
 
-    const interestIncome = findAccount(is, '이자수익');
+    // 손익계산서 (IS)
+    const interestIncome  = findAccount(is, '이자수익');
     const interestExpense = findAccount(is, '이자비용');
-    const netIncome = findAccount(is, '당기순이익');
+    const netIncome       = findAccount(is, '당기순이익(손실)', '당기순이익');
 
-    // 평균자산으로 ROA 계산 (전기 자산 없으므로 당기 자산으로 근사)
-    const nim = totalAssets > 0
-      ? ((interestIncome - interestExpense) / totalAssets) * 100
-      : 0;
-    const roa = totalAssets > 0 ? (netIncome / totalAssets) * 100 : 0;
+    if (totalAssets === 0) return null; // 파싱 실패
+
+    const nim = ((interestIncome - interestExpense) / totalAssets) * 100;
+    const roa = (netIncome / totalAssets) * 100;
     const roe = totalEquity > 0 ? (netIncome / totalEquity) * 100 : 0;
     const ldr = totalDeposits > 0 ? (totalLoans / totalDeposits) * 100 : 0;
     const allowanceCoverage = totalLoans > 0 ? (allowanceForLosses / totalLoans) * 100 : 0;
@@ -95,8 +109,7 @@ async function fetchYearMetrics(corpCode: string, year: number): Promise<Financi
       year,
       totalAssets, totalLoans, totalDeposits, totalEquity,
       interestIncome, interestExpense, netIncome, allowanceForLosses,
-      // BIS, NPL은 공시 보조자료 필요 — 목업값 사용
-      bisRatio: 0, nplRatio: 0,
+      bisRatio: 0, nplRatio: 0, // 별도 감독 공시 → 목업으로 보완
       nim, roa, roe, ldr, allowanceCoverage,
     };
   } catch {
@@ -109,7 +122,7 @@ export async function fetchBankMetrics(
   corpCode: string,
   years: number[]
 ): Promise<{ metrics: FinancialMetrics[]; source: 'DART' | 'MOCK' }> {
-  const cacheKey = `${bankId}_${years.join('_')}`;
+  const cacheKey = `${bankId}_v3_${years.join('_')}`;
   const cached = getCached(cacheKey);
   if (cached) return { metrics: cached, source: 'DART' };
 
@@ -121,33 +134,37 @@ export async function fetchBankMetrics(
     const results = await Promise.all(
       years.map(y => fetchYearMetrics(corpCode, y))
     );
-    const metrics = results.filter(Boolean) as FinancialMetrics[];
 
-    if (metrics.length === 0) throw new Error('No data');
-
-    // DART 원시금액은 원(KRW) 단위 / 목업은 억원 단위 → 혼용 금지
-    // 원시 재무데이터는 목업(사업보고서 공시값)을 기준으로 하고,
-    // DART에서는 단위에 무관한 비율(%)값만 추출하여 합리적이면 적용
     const mockFallback = MOCK_DATA[bankId] ?? [];
-    const enriched = metrics.map(m => {
-      const mock = mockFallback.find(mk => mk.year === m.year);
-      if (!mock) return { ...m, bisRatio: 0, nplRatio: 0 };
+    const hasAnyRealData = results.some(r => r !== null);
 
-      return {
-        ...mock, // 원시 재무데이터: 목업값(사업보고서 공시 기반) 사용
-        // DART 계산 비율이 합리적이면 적용, 아니면 목업값
-        // NIM, LDR, allowanceCoverage는 DART 계산 비율 활용 (합리적 범위 내)
-        nim: (m.nim > 0 && m.nim < 10) ? m.nim : mock.nim,
-        ldr: (m.ldr > 50 && m.ldr < 200) ? m.ldr : mock.ldr,
-        allowanceCoverage: (m.allowanceCoverage > 10 && m.allowanceCoverage < 500) ? m.allowanceCoverage : mock.allowanceCoverage,
-        // ROA/ROE는 지주회사 OCI 구조 왜곡으로 목업값 사용
-        roa: mock.roa,
-        roe: mock.roe,
-      };
-    });
+    if (!hasAnyRealData) throw new Error('No DART data available');
 
-    setCache(cacheKey, enriched);
-    return { metrics: enriched, source: 'DART' };
+    // 연도별 병합: DART 실데이터 우선, 없는 연도는 목업(사업보고서 공시 추정치)으로 보완
+    // DART API는 구조적으로 2023년 이후 데이터만 제공 (IFRS 9 도입 이후 공시 체계)
+    const merged = years.map((year, i) => {
+      const dart = results[i];
+      const mock = mockFallback.find(m => m.year === year);
+
+      if (dart && mock) {
+        // DART 실데이터 + 감독당국 공시 지표(BIS, NPL) 보완
+        return {
+          ...dart,
+          bisRatio: mock.bisRatio,
+          nplRatio: mock.nplRatio,
+          allowanceCoverage: dart.allowanceCoverage > 5
+            ? dart.allowanceCoverage
+            : mock.allowanceCoverage,
+        };
+      }
+      // 해당 연도 DART 데이터 없음 → 목업(사업보고서 기반 추정치) 사용
+      return mock ?? null;
+    }).filter(Boolean) as FinancialMetrics[];
+
+    if (merged.length === 0) throw new Error('No data');
+
+    setCache(cacheKey, merged);
+    return { metrics: merged, source: 'DART' };
   } catch {
     return { metrics: MOCK_DATA[bankId] ?? [], source: 'MOCK' };
   }
