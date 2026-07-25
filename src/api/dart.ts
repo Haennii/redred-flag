@@ -114,8 +114,8 @@ async function fetchYearMetrics(corpCode: string, year: number): Promise<Financi
       '당기손익-공정가치측정금융상품관련손익',
       '순당기손익-공정가치측정금융상품이익',
     );
-    // 기타영업손익: 하나는 단일 계정 없이 수익/비용 분리 → 차감 계산
-    const otherOpNet  = findAccountSigned(is, '기타영업손익');
+    // 기타영업손익: 하나는 수익/비용 분리 공시, 우리 2023은 '기타영업손실' 계정명 사용
+    const otherOpNet  = findAccountSigned(is, '기타영업손익', '기타영업손실');
     const otherOpIncome = otherOpNet !== 0
       ? otherOpNet
       : findAccount(is, '기타영업수익') - findAccount(is, '기타영업비용');
@@ -159,7 +159,7 @@ export async function fetchBankMetrics(
   corpCode: string,
   years: number[]
 ): Promise<{ metrics: FinancialMetrics[]; source: 'DART' | 'MOCK' }> {
-  const cacheKey = `${bankId}_v7_${years.join('_')}`;
+  const cacheKey = `${bankId}_v8_${years.join('_')}`;
   const cached = getCached(cacheKey);
   if (cached) return { metrics: cached, source: 'DART' };
 
