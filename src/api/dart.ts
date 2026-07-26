@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { DartApiResponse, FinancialMetrics } from '../types';
+import { DartApiResponse, DartFinancialItem, FinancialMetrics } from '../types';
 import { MOCK_DATA } from '../data/mockData';
 
 const API_KEY = import.meta.env.VITE_DART_API_KEY as string;
@@ -32,40 +32,44 @@ function setCache(key: string, data: FinancialMetrics[]): void {
   } catch {}
 }
 
-// DART API는 원(KRW) 단위 반환 → 억원으로 변환
+// DART API는 원(KRW) 단위 반환 → 억원으로 ��환
 function parseAmountInEok(str: string | null | undefined): number {
   if (!str) return 0;
   const raw = parseInt(str.replace(/,/g, ''), 10) || 0;
   return Math.round(raw / 100_000_000);
 }
 
-function findAccount(items: DartApiResponse['list'], ...keywords: string[]): number {
+type AmountField = 'thstrm_amount' | 'frmtrm_amount' | 'bfefrmtrm_amount';
+
+function findAccount(
+  items: DartFinancialItem[],
+  field: AmountField,
+  ...keywords: string[]
+): number {
   const exact = items.find(i => keywords.includes(i.account_nm.trim()));
-  if (exact) return parseAmountInEok(exact.thstrm_amount);
+  if (exact) return parseAmountInEok(exact[field]);
   const partial = items.find(i => keywords.some(kw => i.account_nm.includes(kw)));
-  return partial ? parseAmountInEok(partial.thstrm_amount) : 0;
+  return partial ? parseAmountInEok(partial[field]) : 0;
 }
 
 // 음수 포함 계정 (기타영업손익 등)
-function findAccountSigned(items: DartApiResponse['list'], ...keywords: string[]): number {
-  const exact = items.find(i => keywords.includes(i.account_nm.trim()));
-  if (exact) {
-    const raw = parseInt((exact.thstrm_amount ?? '').replace(/,/g, ''), 10) || 0;
-    return Math.round(raw / 100_000_000);
-  }
-  const partial = items.find(i => keywords.some(kw => i.account_nm.includes(kw)));
-  if (partial) {
-    const raw = parseInt((partial.thstrm_amount ?? '').replace(/,/g, ''), 10) || 0;
-    return Math.round(raw / 100_000_000);
-  }
-  return 0;
+function findAccountSigned(
+  items: DartFinancialItem[],
+  field: AmountField,
+  ...keywords: string[]
+): number {
+  const match =
+    items.find(i => keywords.includes(i.account_nm.trim())) ??
+    items.find(i => keywords.some(kw => i.account_nm.includes(kw)));
+  if (!match) return 0;
+  const raw = parseInt((match[field] ?? '').replace(/,/g, ''), 10) || 0;
+  return Math.round(raw / 100_000_000);
 }
 
 async function fetchAllAccounts(
   corpCode: string,
   year: number
 ): Promise<DartApiResponse['list']> {
-  // fnlttSinglAcntAll: 전체 재무제표 (모든 계정) — 개별 은행 별도재무제표 기준
   const params = new URLSearchParams({
     crtfc_key: API_KEY,
     corp_code: corpCode,
@@ -82,76 +86,71 @@ async function fetchAllAccounts(
   return res.data.list;
 }
 
-async function fetchYearMetrics(corpCode: string, year: number): Promise<FinancialMetrics | null> {
-  try {
-    const items = await fetchAllAccounts(corpCode, year);
-    const bs = items.filter(i => i.sj_div === 'BS');
-    // 은행 재무제표는 IS 대신 CIS(포괄손익계산서) 사용
-    const is = items.filter(i => i.sj_div === 'IS' || i.sj_div === 'CIS');
+// DART API 응답에서 특정 연도 지표 추출
+// field: thstrm=당기, frmtrm=전기(1년 전), bfefrmtrm=전전기(2년 전)
+function extractMetrics(
+  items: DartFinancialItem[],
+  field: AmountField,
+  year: number
+): FinancialMetrics | null {
+  const bs = items.filter(i => i.sj_div === 'BS');
+  const is = items.filter(i => i.sj_div === 'IS' || i.sj_div === 'CIS');
 
-    // 재무상태표 (BS)
-    const totalAssets = findAccount(bs, '자산총계');
-    const totalEquity = findAccount(bs, '자본총계');
-    // IFRS 9 도입(2023) 전후 계정명 차이 대응
-    const totalLoans  = findAccount(bs,
-      '상각후원가측정대출채권',
-      '대출채권및수취채권',
-      '대출채권',
-      '원화대출금',
-    );
+  const fa  = (...kw: string[]) => findAccount(is, field, ...kw);
+  const fas = (...kw: string[]) => findAccountSigned(is, field, ...kw);
+  const fabs = (...kw: string[]) => findAccount(bs, field, ...kw);
 
-    // 포괄손익계산서 (CIS) — 은행은 IS 대신 CIS 사용
-    const interestIncome  = findAccount(is, '이자수익');
-    const interestExpense = findAccount(is, '이자비용');
-    const netIncome       = findAccount(is, '당기순이익(손실)', '당기순이익');
+  const totalAssets  = fabs('자산총계');
+  const totalEquity  = fabs('자본총계');
+  const totalLoans   = fabs(
+    '상각후원가측정대출채��',
+    '대출채권및수취채권',
+    '대출채권',
+    '원화대출금',
+  );
 
-    // 비이자이익 = 순수수료이익 + 유가증권손익 + 기타영업손익
-    // 신한은 '순수수료손익', 나머지 3행은 '순수수료이익'
-    const feeIncome   = findAccount(is, '순수수료이익', '순수수료손익');
-    // 트레이딩손익: KB '금융상품 순손익', 신한·우리 '금융상품관련손익', 하나 '순당기손익-공정가치측정금융상품이익'
-    const tradingGain = findAccount(is,
-      '당기손익-공정가치측정 금융상품 순손익',
-      '당기손익-공정가치측정금융상품관련손익',
-      '순당기손익-공정가치측정금융상품이익',
-    );
-    // 기타영업손익: 하나는 수익/비용 분리 공시, 우리 2023은 '기타영업손실' 계정명 사용
-    const otherOpNet  = findAccountSigned(is, '기타영업손익', '기타영업손실');
-    const otherOpIncome = otherOpNet !== 0
-      ? otherOpNet
-      : findAccount(is, '기타영업수익') - findAccount(is, '기타영업비용');
-    const nonInterestIncome = feeIncome + tradingGain + otherOpIncome;
+  const interestIncome  = fa('이자수익');
+  const interestExpense = fa('이자비용');
+  const netIncome       = fa('당기순이익(손실)', '당기순이익');
 
-    // 순영업수익 = 순이자이익 + 비이자이익 (계정명 의존 없이 직접 계산)
-    const netInterestIncome   = interestIncome - interestExpense;
-    const netOperatingRevenue = netInterestIncome + nonInterestIncome;
+  // 비이자이익 3개 구성 계정
+  const feeIncome   = fa('순수수료이익', '순수수료손익');
+  const tradingGain = fa(
+    '당기손익-공정가치측정 금융상품 순손익',
+    '당기손익-공정가치측정금융상품관련손익',
+    '순당기손익-공정가치측정금융상품이익',
+  );
+  const otherOpNet  = fas('기타영업손익', '기타영업손실');
+  const otherOpIncome = otherOpNet !== 0
+    ? otherOpNet
+    : fa('기타영업수익') - fa('기타영업비용');
 
-    // 대손비용 — 은행별 계정명 차이 전체 대응
-    // KB: '신용손실충당금 전입액', 하나/우리: '신용손실충당금전입액', 신한: '신용손실충당금전입'(액 없음)
-    const creditCost = findAccount(is,
-      '신용손실충당금 전입액',
-      '신용손실충당금전입액',
-      '신용손실충당금전입',
-      '대손충당금전입액',
-      '대손충당금 전입액',
-    );
+  // 대손비용
+  const creditCost = fa(
+    '신용손실충당금 전입액',
+    '신용손실충당금전입액',
+    '신용손실충당금전입',
+    '대손충당금전입액',
+    '대손충당금 전입액',
+  );
 
-    if (totalAssets === 0) return null;
+  if (totalAssets === 0) return null;
 
-    const nim            = ((interestIncome - interestExpense) / totalAssets) * 100;
-    const roe            = totalEquity > 0 ? (netIncome / totalEquity) * 100 : 0;
-    const creditCostRatio = totalLoans > 0 ? (creditCost / totalLoans) * 100 : 0;
+  const nonInterestIncome   = feeIncome + tradingGain + otherOpIncome;
+  const netInterestIncome   = interestIncome - interestExpense;
+  const netOperatingRevenue = netInterestIncome + nonInterestIncome;
+  const nim            = (netInterestIncome / totalAssets) * 100;
+  const roe            = totalEquity > 0 ? (netIncome / totalEquity) * 100 : 0;
+  const creditCostRatio = totalLoans > 0 ? (creditCost / totalLoans) * 100 : 0;
 
-    return {
-      year,
-      totalAssets, totalLoans, totalEquity,
-      interestIncome, interestExpense, netIncome,
-      netOperatingRevenue, nonInterestIncome, creditCost,
-      cet1Ratio: 0, // 감독당국 공시 → 목업으로 보완
-      nim, roe, creditCostRatio,
-    };
-  } catch {
-    return null;
-  }
+  return {
+    year,
+    totalAssets, totalLoans, totalEquity,
+    interestIncome, interestExpense, netIncome,
+    netOperatingRevenue, nonInterestIncome, creditCost,
+    cet1Ratio: 0, // 감독당국 공시 → 목업으로 보완
+    nim, roe, creditCostRatio,
+  };
 }
 
 export async function fetchBankMetrics(
@@ -159,7 +158,7 @@ export async function fetchBankMetrics(
   corpCode: string,
   years: number[]
 ): Promise<{ metrics: FinancialMetrics[]; source: 'DART' | 'MOCK' }> {
-  const cacheKey = `${bankId}_v8_${years.join('_')}`;
+  const cacheKey = `${bankId}_v9_${years.join('_')}`;
   const cached = getCached(cacheKey);
   if (cached) return { metrics: cached, source: 'DART' };
 
@@ -168,29 +167,35 @@ export async function fetchBankMetrics(
   }
 
   try {
-    const results = await Promise.all(
-      years.map(y => fetchYearMetrics(corpCode, y))
-    );
+    // DART API로 2023 사업보고서 1회 요청 → 당기(2023) + 전기(2022) + 전전기(2021) 동시 추출
+    // DART API로 2024 사업보고서 1회 요청 → 당기(2024)
+    const [items23, items24] = await Promise.all([
+      fetchAllAccounts(corpCode, 2023),
+      fetchAllAccounts(corpCode, 2024),
+    ]);
+
+    const year23 = extractMetrics(items23, 'thstrm_amount',   2023);
+    const year22 = extractMetrics(items23, 'frmtrm_amount',   2022);
+    const year21 = extractMetrics(items23, 'bfefrmtrm_amount', 2021);
+    const year24 = extractMetrics(items24, 'thstrm_amount',   2024);
+
+    const dartByYear: Record<number, FinancialMetrics | null> = {
+      2024: year24,
+      2023: year23,
+      2022: year22,
+      2021: year21,
+    };
 
     const mockFallback = MOCK_DATA[bankId] ?? [];
-    const hasAnyRealData = results.some(r => r !== null);
 
-    if (!hasAnyRealData) throw new Error('No DART data available');
-
-    // 연도별 병합: DART 실데이터 우선, 없는 연도는 목업(사업보고서 공시 추정치)으로 보완
-    // DART API는 구조적으로 2023년 이후 데이터만 제공 (IFRS 9 도입 이후 공시 체계)
-    const merged = years.map((year, i) => {
-      const dart = results[i];
+    // 연도별 병합: DART 실데이터 우선, CET1 및 DART 미지원 연도(2020)는 목업으로 보완
+    const merged = years.map(year => {
+      const dart = dartByYear[year] ?? null;
       const mock = mockFallback.find(m => m.year === year);
 
-      if (dart && mock) {
-        // DART 실데이터 + 감독당국 공시 지표(CET1) 보완
-        return {
-          ...dart,
-          cet1Ratio: mock.cet1Ratio,
-        };
+      if (dart) {
+        return { ...dart, cet1Ratio: mock?.cet1Ratio ?? 0 };
       }
-      // 해당 연도 DART 데이터 없음 → 목업(사업보고서 기반 추정치) 사용
       return mock ?? null;
     }).filter(Boolean) as FinancialMetrics[];
 
