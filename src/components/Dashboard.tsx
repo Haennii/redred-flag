@@ -322,26 +322,44 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800/50">
-                  {[
-                    { label: '총자산 (조원)',       key: 'totalAssets',         divisor: 10000, decimals: 1 },
-                    { label: '당기순이익 (억원)',   key: 'netIncome',            divisor: 1,     decimals: 0 },
-                    { label: 'ROE',                key: 'roe',                  divisor: 1,     decimals: 1, suffix: '%' },
-                    { label: 'NIM',                key: 'nim',                  divisor: 1,     decimals: 2, suffix: '%' },
-                    { label: '보통주자본비율(CET1)', key: 'cet1Ratio',           divisor: 1,     decimals: 1, suffix: '%' },
-                    { label: '순영업수익 (억원)',   key: 'netOperatingRevenue',  divisor: 1,     decimals: 0 },
-                    { label: '비이자이익 (억원)',   key: 'nonInterestIncome',    divisor: 1,     decimals: 0 },
-                    { label: '대손비용 (억원)',     key: 'creditCost',           divisor: 1,     decimals: 0 },
-                    { label: '대손비용률',          key: 'creditCostRatio',      divisor: 1,     decimals: 2, suffix: '%' },
-                  ].map(row => (
+                  {([
+                    { label: '총자산 (조원)',        key: 'totalAssets',        divisor: 10000, decimals: 1,                 higherIsBetter: true  },
+                    { label: '당기순이익 (억원)',    key: 'netIncome',           divisor: 1,     decimals: 0,                 higherIsBetter: true  },
+                    { label: 'ROE',                  key: 'roe',                divisor: 1,     decimals: 1, suffix: '%',    higherIsBetter: true  },
+                    { label: 'NIM',                  key: 'nim',                divisor: 1,     decimals: 2, suffix: '%',    higherIsBetter: true  },
+                    { label: '보통주자본비율(CET1)', key: 'cet1Ratio',          divisor: 1,     decimals: 1, suffix: '%',    higherIsBetter: true  },
+                    { label: '순영업수익 (억원)',    key: 'netOperatingRevenue', divisor: 1,     decimals: 0,                 higherIsBetter: true  },
+                    { label: '비이자이익 (억원)',    key: 'nonInterestIncome',   divisor: 1,     decimals: 0,                 higherIsBetter: true  },
+                    { label: '대손비용 (억원)',      key: 'creditCost',          divisor: 1,     decimals: 0,                 higherIsBetter: false },
+                    { label: '대손비용률',           key: 'creditCostRatio',     divisor: 1,     decimals: 2, suffix: '%',    higherIsBetter: false },
+                  ] as const).map(row => (
                     <tr key={row.label} className="hover:bg-white/[0.02]">
                       <td className="px-5 py-3 text-gray-400 font-medium text-xs">{row.label}</td>
-                      {selected.metrics.map(m => {
-                        const raw = m[row.key as keyof typeof m] as number;
-                        const val = raw / row.divisor;
+                      {selected.metrics.map((m, idx) => {
+                        const key = row.key as keyof typeof m;
+                        const raw  = m[key] as number;
+                        const val  = raw / row.divisor;
+                        const prev = selected.metrics[idx - 1];
+                        const prevRaw = prev ? (prev[key] as number) : null;
+                        const yoy = (prevRaw !== null && prevRaw !== 0)
+                          ? ((raw - prevRaw) / Math.abs(prevRaw)) * 100
+                          : null;
+                        const isGood = yoy === null ? null
+                          : row.higherIsBetter ? yoy > 0 : yoy < 0;
                         return (
-                          <td key={m.year} className="text-right px-4 py-3 text-gray-300 font-mono text-xs">
-                            {val.toFixed(row.decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                            {row.suffix ?? ''}
+                          <td key={m.year} className="text-right px-4 py-2.5 font-mono text-xs">
+                            <div className="text-gray-300">
+                              {val.toFixed(row.decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                              {'suffix' in row ? row.suffix : ''}
+                            </div>
+                            {yoy !== null && (
+                              <div
+                                className="text-[10px] mt-0.5"
+                                style={{ color: isGood === null ? '#6B7280' : isGood ? '#10B981' : '#EF4444' }}
+                              >
+                                {yoy >= 0 ? '▲' : '▼'}{Math.abs(yoy).toFixed(1)}%
+                              </div>
+                            )}
                           </td>
                         );
                       })}
