@@ -33,6 +33,14 @@ export const BANKS: Bank[] = [
     color: '#818CF8',
     bgColor: 'rgba(129, 140, 248, 0.15)',
   },
+  {
+    id: 'nh',
+    name: 'NH농협은행',
+    shortName: '농협',
+    corpCode: '00908757', // NH농협은행 (비상장, DART API 미지원 → mockData 사용)
+    color: '#84CC16',
+    bgColor: 'rgba(132, 204, 22, 0.15)',
+  },
 ];
 
 export const ANALYSIS_YEARS = [2020, 2021, 2022, 2023, 2024];

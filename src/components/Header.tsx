@@ -14,7 +14,7 @@ export default function Header({ lastUpdated }: HeaderProps) {
                 RedFlag <span className="text-red-400">·</span> 은행 재무 이상징후 분석
               </h1>
               <p className="text-xs text-gray-500 mt-0.5">
-                4대 시중은행 재무제표 기반 감사위험 조기경보 대시보드
+                5대 은행 재무제표 기반 감사위험 조기경보 대시보드
               </p>
             </div>
           </div>

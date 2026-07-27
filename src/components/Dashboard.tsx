@@ -126,7 +126,7 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
             <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
               종합 감사위험 점수
             </h2>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
               {analyses.map(a => (
                 <div
                   key={a.bank.id}
