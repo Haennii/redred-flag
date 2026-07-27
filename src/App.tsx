@@ -5,24 +5,23 @@ import { fetchBankMetrics } from './api/dart';
 import { assessRedFlags, computePeerAverages, getRiskLevel } from './utils/riskFlags';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
+import MethodologyPage from './components/MethodologyPage';
 
 export default function App() {
   const [analyses, setAnalyses] = useState<BankAnalysis[]>([]);
   const [selectedBankId, setSelectedBankId] = useState('overview');
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<'dashboard' | 'methodology'>('dashboard');
 
   useEffect(() => {
     async function load() {
-      // 1단계: 전 은행 데이터 병렬 로드
       const fetched = await Promise.all(
         BANKS.map(bank => fetchBankMetrics(bank.id, bank.corpCode, ANALYSIS_YEARS))
       );
 
-      // 2단계: 동종 4행 평균 계산
       const allMetrics = fetched.map(f => f.metrics);
       const peerAvg = computePeerAverages(allMetrics);
 
-      // 3단계: 은행별 이상징후 평가 (동종 평균 기준 적용)
       const results: BankAnalysis[] = fetched.map((f, i) => {
         const bank = BANKS[i];
         const { flags, score } = assessRedFlags(f.metrics, peerAvg);
@@ -61,12 +60,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0B1120]">
-      <Header lastUpdated={today} />
-      <Dashboard
-        analyses={analyses}
-        selectedBankId={selectedBankId}
-        onSelectBank={setSelectedBankId}
-      />
+      <Header lastUpdated={today} view={view} onViewChange={setView} />
+      {view === 'dashboard'
+        ? <Dashboard analyses={analyses} selectedBankId={selectedBankId} onSelectBank={setSelectedBankId} />
+        : <MethodologyPage />
+      }
     </div>
   );
 }

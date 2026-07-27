@@ -1,8 +1,10 @@
 interface HeaderProps {
   lastUpdated: string;
+  view: 'dashboard' | 'methodology';
+  onViewChange: (v: 'dashboard' | 'methodology') => void;
 }
 
-export default function Header({ lastUpdated }: HeaderProps) {
+export default function Header({ lastUpdated, view, onViewChange }: HeaderProps) {
   return (
     <header className="border-b border-gray-800 bg-[#0B1120]">
       <div className="max-w-screen-2xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -19,10 +21,33 @@ export default function Header({ lastUpdated }: HeaderProps) {
             </div>
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-500">데이터 기준</div>
-          <div className="text-sm text-gray-300 font-mono">{lastUpdated}</div>
-          <div className="text-xs text-gray-600 mt-0.5">출처: DART 전자공시 / 사업보고서</div>
+
+        <div className="flex items-center gap-6">
+          {/* 뷰 전환 탭 */}
+          <nav className="flex gap-1 bg-[#1A2235] rounded-lg p-1 border border-gray-800">
+            {([
+              { id: 'dashboard',   label: '대시보드' },
+              { id: 'methodology', label: '방법론'   },
+            ] as const).map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => onViewChange(tab.id)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  view === tab.id
+                    ? 'bg-white text-gray-900'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+
+          <div className="text-right">
+            <div className="text-xs text-gray-500">데이터 기준</div>
+            <div className="text-sm text-gray-300 font-mono">{lastUpdated}</div>
+            <div className="text-xs text-gray-600 mt-0.5">출처: DART 전자공시 / 사업보고서</div>
+          </div>
         </div>
       </div>
     </header>
