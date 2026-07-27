@@ -139,51 +139,6 @@ export const MOCK_DATA: Record<string, FinancialMetrics[]> = {
     },
   ],
 
-  // NH농협은행: 비상장사로 DART API 미지원 → 금융감독원 경영공시 및 언론 보도 기반 추정치
-  // 별도재무제표 기준 (조합원 출자금 포함 자기자본, 농업금융 특화 구조 반영)
-  nh: [
-    {
-      year: 2020,
-      totalAssets: 3_350_000, totalLoans: 2_580_000, totalEquity: 175_000,
-      interestIncome: 83_000, interestExpense: 37_000, netIncome: 8_000,
-      netOperatingRevenue: 49_500, nonInterestIncome: 3_500,
-      creditCost: 9_500, creditCostRatio: 0.368,
-      roe: 4.57, nim: 1.37, cet1Ratio: 13.5,
-    },
-    {
-      year: 2021,
-      totalAssets: 3_730_000, totalLoans: 2_730_000, totalEquity: 185_000,
-      interestIncome: 80_000, interestExpense: 24_000, netIncome: 17_000,
-      netOperatingRevenue: 59_000, nonInterestIncome: 3_000,
-      creditCost: 2_000, creditCostRatio: 0.073,
-      roe: 9.19, nim: 1.50, cet1Ratio: 14.0,
-    },
-    {
-      year: 2022,
-      totalAssets: 4_060_000, totalLoans: 2_890_000, totalEquity: 196_000,
-      interestIncome: 122_000, interestExpense: 53_000, netIncome: 21_000,
-      netOperatingRevenue: 71_000, nonInterestIncome: 2_000,
-      creditCost: 3_500, creditCostRatio: 0.121,
-      roe: 10.71, nim: 1.70, cet1Ratio: 15.0,
-    },
-    {
-      year: 2023,
-      totalAssets: 4_270_000, totalLoans: 3_050_000, totalEquity: 208_000,
-      interestIncome: 175_000, interestExpense: 109_000, netIncome: 14_500,
-      netOperatingRevenue: 68_000, nonInterestIncome: 2_000,
-      creditCost: 9_000, creditCostRatio: 0.295,
-      roe: 6.97, nim: 1.55, cet1Ratio: 14.2,
-    },
-    {
-      year: 2024,
-      totalAssets: 4_380_000, totalLoans: 3_100_000, totalEquity: 220_000,
-      interestIncome: 182_000, interestExpense: 109_000, netIncome: 18_000,
-      netOperatingRevenue: 75_500, nonInterestIncome: 2_500,
-      creditCost: 3_100, creditCostRatio: 0.100,
-      roe: 8.18, nim: 1.67, cet1Ratio: 14.7,
-    },
-  ],
-
   woori: [
     {
       year: 2020,
