@@ -7,6 +7,7 @@ import IndicatorCard from './IndicatorCard';
 import RedFlagPanel from './RedFlagPanel';
 import TrendLineChart from './charts/TrendLineChart';
 import ComparisonBarChart from './charts/ComparisonBarChart';
+import PeerComparisonChart from './charts/PeerComparisonChart';
 
 interface Props {
   analyses: BankAnalysis[];
@@ -181,7 +182,10 @@ export default function Dashboard({ analyses, selectedBankId, onSelectBank }: Pr
             />
           </div>
 
-          {/* 추세 차트 */}
+          {/* 피어 비교 추이 차트 */}
+          <PeerComparisonChart analyses={analyses} />
+
+          {/* 이상징후 임계선 기반 추세 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <TrendLineChart
               title="순이자마진(NIM) 추이"
