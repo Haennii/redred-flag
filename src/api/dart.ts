@@ -46,10 +46,19 @@ function findAccount(
   field: AmountField,
   ...keywords: string[]
 ): number {
-  const exact = items.find(i => keywords.includes(i.account_nm.trim()));
-  if (exact) return parseAmountInEok(exact[field]);
-  const partial = items.find(i => keywords.some(kw => i.account_nm.includes(kw)));
-  return partial ? parseAmountInEok(partial[field]) : 0;
+  const matches = items.filter(i =>
+    keywords.includes(i.account_nm.trim()) ||
+    keywords.some(kw => i.account_nm.includes(kw))
+  );
+  if (matches.length === 0) return 0;
+  // DART는 동일 계정을 음수/양수 두 행으로 반환하는 경우가 있음.
+  // 비용 계정은 양수 행이 실제 값이므로 양수 우선 선택.
+  const positive = matches.find(i => {
+    const v = parseInt((i[field] ?? '').replace(/,/g, ''), 10);
+    return v > 0;
+  });
+  const target = positive ?? matches[0];
+  return parseAmountInEok(target[field]);
 }
 
 // 음수 포함 계정 (기타영업손익 등)
