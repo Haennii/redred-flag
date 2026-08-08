@@ -24,13 +24,7 @@ const METRICS: MetricConfig[] = [
   { key: 'nim',            label: 'NIM',         unit: '%',  decimals: 2 },
   { key: 'roe',            label: 'ROE',         unit: '%',  decimals: 1 },
   { key: 'cet1Ratio',      label: 'CET1',        unit: '%',  decimals: 2 },
-  {
-    key: 'creditCostRatio',
-    label: '대손비용률',
-    unit: '%',
-    decimals: 2,
-    note: '우리은행 2024년 -0.20%는 충당금 순환입. ISA 540: 환입 근거(부동산 PF 워크아웃 정상화 등) 및 경영진 추정 가정의 적정성 검토 필요.',
-  },
+  { key: 'creditCostRatio', label: '대손비용률', unit: '%', decimals: 2 },
   { key: 'totalAssets',    label: '총자산',      unit: '조', decimals: 0, divisor: 10000, divisorLabel: '조원' },
   { key: 'netIncome',      label: '당기순이익',  unit: '억', decimals: 0 },
 ];

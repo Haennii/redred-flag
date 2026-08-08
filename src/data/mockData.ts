@@ -197,7 +197,7 @@ export const MOCK_DATA: Record<string, FinancialMetrics[]> = {
       totalAssets: 4_612_248, totalLoans: 3_424_653, totalEquity: 267_273,
       interestIncome: 179_824, interestExpense: 112_406, netIncome: 27_946,
       netOperatingRevenue: 70_046, nonInterestIncome: 2_628,
-      creditCost: -6_983, creditCostRatio: -0.204,
+      creditCost: 6_983, creditCostRatio: 0.204,
       roe: 10.46, nim: 1.462, cet1Ratio: 13.17,
     },
   ],
